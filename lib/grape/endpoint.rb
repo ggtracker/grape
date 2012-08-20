@@ -85,8 +85,7 @@ module Grape
       parts << ':version' if settings[:version] && settings[:version_options][:using] == :path
       parts << namespace.to_s if namespace
       parts << path.to_s if path && '/' != path
-      parts.last << '(.:format)'
-      Rack::Mount::Utils.normalize_path(parts.join('/'))
+      Rack::Mount::Utils.normalize_path(parts.join('/') + '(.:format)')
     end
 
     def namespace
@@ -126,7 +125,7 @@ module Grape
 
     # Pull out request body params if the content type matches and we're on a POST or PUT
     def body_params
-      if ['POST', 'PUT'].include?(request.request_method.to_s.upcase)
+      if ['POST', 'PUT'].include?(request.request_method.to_s.upcase) && request.content_length.to_i > 0
         return case env['CONTENT_TYPE']
           when 'application/json'
             MultiJson.decode(request.body.read)
@@ -153,7 +152,7 @@ module Grape
     end
 
     # Redirect to a new url.
-    # 
+    #
     # @param url [String] The url to be redirect.
     # @param options [Hash] The options used when redirect.
     #                       :permanent, default true.
@@ -164,7 +163,7 @@ module Grape
       else
         if env['HTTP_VERSION'] == 'HTTP/1.1' && request.request_method.to_s.upcase != "GET"
           status 303
-        else 
+        else
           status 302
         end
       end
@@ -197,6 +196,11 @@ module Grape
       else
         @header
       end
+    end
+
+    # Set response content-type
+    def content_type(val)
+      header('Content-Type', val)
     end
 
     # Set or get a cookie
@@ -264,7 +268,7 @@ module Grape
       representation = { root => representation } if root
       body representation
     end
-    
+
     # Returns route information for the current request.
     #
     # @example
@@ -286,24 +290,30 @@ module Grape
 
       self.extend helpers
       cookies.read(@request)
+
+      Array(settings[:validations]).each do |validator|
+        validator.validate!(params)
+      end
+
       run_filters befores
       response_text = instance_eval &self.block
       run_filters afters
       cookies.write(header)
-      
+
       [status, header, [body || response_text]]
     end
 
     def build_middleware
       b = Rack::Builder.new
 
+      b.use Rack::Head
       b.use Grape::Middleware::Error,
         :default_status => settings[:default_error_status] || 403,
         :rescue_all => settings[:rescue_all],
-        :rescued_errors => settings[:rescued_errors],
+        :rescued_errors => aggregate_setting(:rescued_errors),
         :format => settings[:error_format] || :txt,
         :rescue_options => settings[:rescue_options],
-        :rescue_handlers => settings[:rescue_handlers] || {}
+        :rescue_handlers => merged_setting(:rescue_handlers)
 
       b.use Rack::Auth::Basic, settings[:auth][:realm], &settings[:auth][:proc] if settings[:auth] && settings[:auth][:type] == :http_basic
       b.use Rack::Auth::Digest::MD5, settings[:auth][:realm], settings[:auth][:opaque], &settings[:auth][:proc] if settings[:auth] && settings[:auth][:type] == :http_digest
@@ -315,7 +325,7 @@ module Grape
           :version_options => settings[:version_options]
         }
       end
-      
+
       b.use Grape::Middleware::Formatter,
         :format => settings[:format],
         :default_format => settings[:default_format] || :txt,
@@ -343,6 +353,12 @@ module Grape
     def aggregate_setting(key)
       settings.stack.inject([]) do |aggregate, frame|
         aggregate += (frame[key] || [])
+      end
+    end
+
+    def merged_setting(key)
+      settings.stack.inject({}) do |merged, frame|
+        merged.merge(frame[key] || {})
       end
     end
 

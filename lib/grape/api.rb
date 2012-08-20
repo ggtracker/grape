@@ -2,12 +2,15 @@ require 'rack/mount'
 require 'rack/auth/basic'
 require 'rack/auth/digest/md5'
 require 'logger'
+require 'grape/util/deep_merge'
 
 module Grape
   # The API class is the primary entry point for
   # creating Grape APIs.Users should subclass this
   # class in order to build an API.
   class API
+    extend Validations::ClassMethods
+    
     class << self
       attr_reader :route_set
       attr_reader :versions
@@ -25,13 +28,14 @@ module Grape
           @logger ||= Logger.new($stdout)
         end
       end
-
+      
       def reset!
         @settings  = Grape::Util::HashStack.new
         @route_set = Rack::Mount::RouteSet.new
         @endpoints = []
         @mountings = []
         @routes = nil
+        reset_validations!
       end
 
       def compile
@@ -208,9 +212,14 @@ module Grape
       #         end
       #       end
       #     end
-      def helpers(mod = nil, &block)
-        if block_given? || mod
-          mod ||= settings.peek[:helpers] || Module.new
+      def helpers(new_mod = nil, &block)
+        if block_given? || new_mod
+          mod = settings.peek[:helpers] || Module.new
+          if new_mod
+            mod.class_eval do
+              include new_mod
+            end
+          end
           mod.class_eval &block if block_given?
           set(:helpers, mod)
         else
@@ -279,10 +288,12 @@ module Grape
         endpoint_options = {
           :method => methods,
           :path => paths,
-          :route_options => (route_options || {}).merge(@last_description || {})
+          :route_options => (@namespace_description || {}).deep_merge(@last_description || {}).deep_merge(route_options || {})
         }
         endpoints << Grape::Endpoint.new(settings.clone, endpoint_options, &block)
+        
         @last_description = nil
+        reset_validations!
       end
 
       def before(&block)
@@ -303,9 +314,13 @@ module Grape
 
       def namespace(space = nil, &block)
         if space || block_given?
+          previous_namespace_description = @namespace_description
+          @namespace_description = (@namespace_description || {}).deep_merge(@last_description || {})
+          @last_description = nil
           nest(block) do
             set(:namespace, space.to_s) if space
           end
+          @namespace_description = previous_namespace_description
         else
           Rack::Mount::Utils.normalize_path(settings.stack.map{|s| s[:namespace]}.join('/'))
         end
@@ -371,6 +386,7 @@ module Grape
           instance_eval &block if block_given?
           blocks.each{|b| instance_eval &b}
           settings.pop   # when finished, we pop the context
+          reset_validations!
         else
           instance_eval &block
         end

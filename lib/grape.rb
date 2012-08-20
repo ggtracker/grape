@@ -9,6 +9,12 @@ module Grape
   autoload :Route,           'grape/route'
   autoload :Entity,          'grape/entity'
   autoload :Cookies,         'grape/cookies'
+  autoload :Validations,     'grape/validations'
+
+  module Exceptions
+    autoload :Base, 'grape/exceptions/base'
+  end
+  autoload :ValidationError, 'grape/exceptions/validation_error'
 
   module Middleware
     autoload :Base,      'grape/middleware/base'
