@@ -16,7 +16,6 @@ tmtags
 
 ## VIM
 *.swp
-*.swo
 
 ## RUBYMINE
 .idea

@@ -21,21 +21,6 @@ describe Grape::API do
     end
   end
 
-  describe '.version' do
-    context 'when defined' do
-      it 'should return version value' do
-        subject.version 'v1'
-        subject.version.should == 'v1'
-      end
-    end
-
-    context 'when not defined' do
-      it 'should return nil' do
-        subject.version.should be_nil
-      end
-    end
-  end
-
   describe '.version using path' do
     it_should_behave_like 'versioning' do
       let(:macro_options) do
@@ -327,20 +312,6 @@ describe Grape::API do
 
       get '/'
       last_response.body.should eql 'first second'
-    end
-
-    it 'should add a after_validation filter' do
-      subject.after_validation { @foo = "first #{params[:id]}:#{params[:id].class}"  }
-      subject.after_validation { @bar = 'second' }
-      subject.params do
-        requires :id, :type => Integer
-      end
-      subject.get '/' do
-        "#{@foo} #{@bar}"
-      end
-
-      get '/', :id => "32"
-      last_response.body.should eql 'first 32:Fixnum second'
     end
 
     it 'should add a after filter' do
@@ -702,7 +673,7 @@ describe Grape::API do
     it 'should not re-raise exceptions of type Grape::Exception::Base' do
       class CustomError < Grape::Exceptions::Base; end
       subject.get('/custom_exception'){ raise CustomError }
-
+      
       lambda{ get '/custom_exception' }.should_not raise_error
     end
 
@@ -926,9 +897,6 @@ describe Grape::API do
           end
         end
       end
-      it "should return the latest version set" do
-         subject.version.should == 'v2'
-      end
       it "should return versions" do
          subject.versions.should == [ 'v1', 'v2' ]
       end
@@ -1061,7 +1029,7 @@ describe Grape::API do
       subject.routes.map { |route|
         { :description => route.route_description, :params => route.route_params }
       }.should eq [
-        { :description => "method", :params => { "ns_param" => { :required => true, :desc => "namespace parameter", :full_name=>"ns_param" }, "method_param" => { :required => false, :desc => "method parameter", :full_name=>"method_param" } } }
+        { :description => "method", :params => { "ns_param" => { :required => true, :desc => "namespace parameter" }, "method_param" => { :required => false, :desc => "method parameter" } } }
       ]
     end
     it "should merge the parameters of nested namespaces" do
@@ -1087,33 +1055,7 @@ describe Grape::API do
       subject.routes.map { |route|
         { :description => route.route_description, :params => route.route_params }
       }.should eq [
-        { :description => "method", :params => { "ns_param" => { :required => true, :desc => "ns param 2", :full_name=>"ns_param" }, "ns1_param" => { :required => true, :desc => "ns1 param", :full_name=>"ns1_param" }, "ns2_param" => { :required => true, :desc => "ns2 param", :full_name=>"ns2_param" }, "method_param" => { :required => false, :desc => "method param", :full_name=>"method_param" } } }
-      ]
-    end
-    it "should provide a full_name for parameters in nested groups" do
-      subject.desc "nesting"
-      subject.params do
-        requires :root_param, :desc => "root param"
-        group :nested do
-          requires :nested_param, :desc => "nested param"
-        end
-      end
-      subject.get "method" do ; end
-      subject.routes.map { |route|
-        { :description => route.route_description, :params => route.route_params }
-      }.should eq [
-        { :description => "nesting", :params => { "root_param" => { :required => true, :desc => "root param", :full_name=>"root_param" }, "nested_param" => { :required => true, :desc => "nested param", :full_name=>"nested[nested_param]" } } }
-      ]
-    end
-    it "should parse parameters when no description is given" do
-      subject.params do
-        requires :one_param, :desc => "one param"
-      end
-      subject.get "method" do ; end
-      subject.routes.map { |route|
-        { :description => route.route_description, :params => route.route_params }
-      }.should eq [
-        { :description => nil, :params => { "one_param" => { :required => true, :desc => "one param", :full_name=>"one_param" } } }
+        { :description => "method", :params => { "ns_param" => { :required => true, :desc => "ns param 2" }, "ns1_param" => { :required => true, :desc => "ns1 param" }, "ns2_param" => { :required => true, :desc => "ns2 param" }, "method_param" => { :required => false, :desc => "method param" } } }
       ]
     end
     it "should not symbolize params" do

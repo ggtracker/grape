@@ -8,10 +8,9 @@ module Grape
     # All validators must inherit from this class.
     # 
     class Validator
-      def initialize(attrs, options, required, scope)
+      def initialize(attrs, options, required)
         @attrs = Array(attrs)
         @required = required
-        @scope = scope
 
         if options.is_a?(Hash) && !options.empty?
           raise "unknown options: #{options.keys}"
@@ -19,8 +18,6 @@ module Grape
       end
 
       def validate!(params)
-        params = @scope.params(params)
-
         @attrs.each do |attr_name|
           if @required || params.has_key?(attr_name)
             validate_param!(attr_name, params)
@@ -43,7 +40,7 @@ module Grape
     ##
     # Base class for all validators taking only one param.
     class SingleOptionValidator < Validator
-      def initialize(attrs, options, required, scope)
+      def initialize(attrs, options, required)
         @option = options
         super
       end
@@ -70,11 +67,7 @@ module Grape
     end
     
     class ParamsScope
-      attr_accessor :element, :parent
-
-      def initialize(api, element, parent, &block)
-        @element = element
-        @parent = parent
+      def initialize(api, &block)
         @api = api
         instance_eval(&block)
       end
@@ -96,22 +89,7 @@ module Grape
         
         validates(attrs, validations)
       end
-
-      def group(element, &block)
-        scope = ParamsScope.new(@api, element, self, &block)
-      end
-
-      def params(params)
-        params = @parent.params(params) if @parent
-        params = params[@element] || {} if @element
-        params
-      end
-
-      def full_name(name)
-        return "#{@parent.full_name(@element)}[#{name}]" if @parent
-        name.to_s
-      end
-
+      
     private
       def validates(attrs, validations)
         doc_attrs = { :required => validations.keys.include?(:presence) }
@@ -128,10 +106,9 @@ module Grape
         if desc = validations.delete(:desc)
           doc_attrs[:desc] = desc
         end
-
-        full_attrs = attrs.collect{ |name| { :name => name, :full_name => full_name(name)} }
-        @api.document_attribute(full_attrs, doc_attrs)
-
+        
+        @api.document_attribute(attrs, doc_attrs)
+        
         # Validate for presence before any other validators
         if validations.has_key?(:presence) && validations[:presence]
           validate('presence', validations[:presence], attrs, doc_attrs)
@@ -153,7 +130,7 @@ module Grape
       def validate(type, options, attrs, doc_attrs)
         validator_class = Validations::validators[type.to_s]
         if validator_class
-          @api.settings[:validations] << validator_class.new(attrs, options, doc_attrs[:required], self)
+          @api.settings[:validations] << validator_class.new(attrs, options, doc_attrs[:required])
         else
           raise "unknown validator: #{type}"
         end
@@ -168,16 +145,17 @@ module Grape
       end
       
       def params(&block)
-        ParamsScope.new(self, nil, nil, &block)
+        ParamsScope.new(self, &block)
       end
       
       def document_attribute(names, opts)
-        @last_description ||= {}
-        @last_description[:params] ||= {}
-
-        Array(names).each do |name|
-          @last_description[:params][name[:name].to_s] ||= {}
-          @last_description[:params][name[:name].to_s].merge!(opts).merge!({:full_name => name[:full_name]})
+        if @last_description
+          @last_description[:params] ||= {}
+        
+          Array(names).each do |name|
+            @last_description[:params][name.to_s] ||= {}
+            @last_description[:params][name.to_s].merge!(opts)
+          end
         end
       end
       
